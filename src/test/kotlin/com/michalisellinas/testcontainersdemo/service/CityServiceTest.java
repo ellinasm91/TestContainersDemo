@@ -1,6 +1,11 @@
-package com.michalisellinas.testcontainersdemo.store;
+package com.michalisellinas.testcontainersdemo.service;
 
+import com.michalisellinas.testcontainersdemo.cache.Cache;
+import com.michalisellinas.testcontainersdemo.cache.HashMapCache;
 import com.michalisellinas.testcontainersdemo.model.City;
+import com.michalisellinas.testcontainersdemo.store.CityRepo;
+import org.assertj.core.api.Assertions;
+import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -16,16 +21,15 @@ import org.springframework.test.context.junit4.SpringRunner;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.time.Duration;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @RunWith(SpringRunner.class)
 @DataJpaTest
-@ContextConfiguration(initializers = {CitiesWithPostgresContainerTest.Initializer.class})
-public class CitiesWithPostgresContainerTest {
-  private static final Logger log = LoggerFactory.getLogger(CitiesWithPostgresContainerTest.class);
+@ContextConfiguration(initializers = {CityServiceTest.Initializer.class})
+public class CityServiceTest {
+    private static final Logger log = LoggerFactory.getLogger(CityServiceTest.class);
+
     @ClassRule
     public static PostgreSQLContainer postgreSQLContainer =
             (PostgreSQLContainer)
@@ -34,43 +38,40 @@ public class CitiesWithPostgresContainerTest {
                             .withUsername("sampleuser")
                             .withPassword("samplepwd")
                             .withStartupTimeout(Duration.ofSeconds(600));
-  @Autowired private CityRepo cityRepo;
 
-  @Test
-  public void testWithDb() {
-    City city1 = cityRepo.save(new City(null, "city1", "USA", 20000L));
-    City city2 = cityRepo.save(new City(null, "city2", "USA", 40000L));
-    assertThat(city1)
-        .matches(
-            c ->
-                c.getId() != null && "city1".equalsIgnoreCase(c.getName()) && c.getPop() == 20000L);
-    assertThat(city2)
-        .matches(
-            c ->
-                c.getId() != null && "city2".equalsIgnoreCase(c.getName()) && c.getPop() == 40000L);
-    assertThat(cityRepo.findAll()).containsExactly(city1, city2);
-  }
+    private HashMap<String, City> cacheMap;
+    @Autowired
+    private CityRepo cityRepo;
+    private Cache cache;
+    private CityService service;
 
-  @Test
-  public void testFindByName() {
-    City city1 = cityRepo.save(new City(null, "city1", "USA", 20000L));
-    City city2 = cityRepo.save(new City(null, "city2", "USA", 40000L));
-
-    List<City> result = cityRepo.findByName("city2");
-
-    log.warn("Result city: {}", result);
-    assertThat(result).containsExactly(city2);
-  }
+    @Before
+    public void setUp() {
+        cacheMap = new HashMap<>();
+        this.cache = new HashMapCache(cacheMap);
+        service = new CityService(this.cache, cityRepo);
+    }
 
     @Test
-    public void testFindUniqueByName() {
-        City city1 = cityRepo.save(new City(null, "city1", "USA", 20000L));
-        City city2 = cityRepo.save(new City(null, "city2", "USA", 40000L));
+    public void whenGetttingValueFetchFromStoreAndWriteToCache() {
+        City storedCity = cityRepo.save(new City(null, "city1", "USA", 20000L));
 
-        Optional<City> result = cityRepo.findUniqueByName("city2");
+        Optional<City> resultFromService = service.get(storedCity.getName());
+        City resourceInCache = cacheMap.get(storedCity.getName());
 
-        log.warn("Result city: {}", result);
-        assertThat(result).containsSame(city2);
+        Assertions.assertThat(resultFromService).contains(storedCity);
+        Assertions.assertThat(resourceInCache).isEqualTo(storedCity);
+    }
+
+    @Test
+    public void whenValueNotPresentInStoreSkipCacheWriteAndReturnEmpty() {
+        City city = new City(null, "city1", "USA", 20000L);
+
+        Optional<City> resultFromService = service.get(city.getName());
+        City resourceInCache = cacheMap.get(city.getName());
+
+        Assertions.assertThat(resultFromService).isEmpty();
+        Assertions.assertThat(resourceInCache).isNull();
     }
 
     static class Initializer

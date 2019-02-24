@@ -20,6 +20,6 @@ public class HashMapCache implements Cache<City> {
   @Override
   public Optional<City> get(String key) {
 
-    return Optional.<City>ofNullable(cache.get(key));
+    return Optional.ofNullable(cache.get(key));
   }
 }

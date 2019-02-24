@@ -6,11 +6,11 @@ import com.michalisellinas.testcontainersdemo.store.CityRepo;
 
 import java.util.Optional;
 
-public class CityService {
-  private Cache cache;
+class CityService {
+  private Cache<City> cache;
   private CityRepo repo;
 
-  public CityService(Cache cache, CityRepo repo) {
+  CityService(Cache<City> cache, CityRepo repo) {
     this.cache = cache;
     this.repo = repo;
   }
@@ -18,6 +18,13 @@ public class CityService {
   void put(String key, City value) {}
 
   Optional<City> get(String key) {
-    return Optional.empty();
+    Optional<City> cachedValue = cache.get(key);
+    if (cachedValue.isPresent()) {
+      return cachedValue;
+    } else {
+      Optional<City> repoData = repo.findUniqueByName(key);
+      repoData.ifPresent(city -> cache.put(key, city));
+      return repoData;
+    }
   }
 }
